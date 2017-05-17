@@ -242,6 +242,7 @@ def enet_encoder(inputs,
 
 def enet_decoder(inputs,
                  out_channels,
+                 activation='softmax',
                  trainable=True):
 
     enet_dec = bottleneck_dec(inputs, 64, upsample=True,
@@ -255,8 +256,8 @@ def enet_decoder(inputs,
 
     enet_dec = bottleneck_dec(enet_dec, 16)
 
-    enet_dec = Conv2DTranspose(out_channels, (2,2), strides=2,
-                               padding='same', activation='softmax')(enet_dec) 
+    enet_dec = Conv2DTranspose(out_channels, (2,2), strides=2, 
+                               padding='same', activation=activation)(enet_dec) 
 
     return enet_dec
 
@@ -264,11 +265,13 @@ def enet_decoder(inputs,
 
 def enet(inputs,
          out_channels,
+         activation='softmax',
          trainable=True):
     
     with tf.name_scope('ENet'):
         enet_out = enet_encoder(inputs, trainable=trainable)
-        enet_out = enet_decoder(enet_out, out_channels, trainable=trainable)
+        enet_out = enet_decoder(enet_out, out_channels,
+                                activation=activation, trainable=trainable)
         return enet_out
     
     
@@ -280,13 +283,13 @@ def discriminator(inputs,
                   trainable=True):
 
     with tf.name_scope('discriminator'):
-        conv1 = LeakyReLU()(Conv2D(64, (4,4), strides=4, trainable=trainable)(inputs))
+        conv1 = LeakyReLU()(Conv2D(64, (4,4), strides=2, trainable=trainable)(inputs))
         #conv1 = BatchNormalization()(conv1)
 
-        conv2 = LeakyReLU()(Conv2D(128, (4,4), strides=4, trainable=trainable)(conv1))
+        conv2 = LeakyReLU()(Conv2D(128, (4,4), strides=2, trainable=trainable)(conv1))
         #conv2 = BatchNormalization()(conv2)
 
-        conv3 = LeakyReLU()(Conv2D(512, (4,4), strides=4, trainable=trainable)(conv2))
+        conv3 = LeakyReLU()(Conv2D(512, (4,4), strides=2, trainable=trainable)(conv2))
 
         flat_vec = Flatten()(conv3)
 
