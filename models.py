@@ -255,7 +255,8 @@ def enet_decoder(inputs,
 
     enet_dec = bottleneck_dec(enet_dec, 16)
 
-    enet_dec = Conv2DTranspose(out_channels, (2,2), strides=2, padding='same')(enet_dec) 
+    enet_dec = Conv2DTranspose(out_channels, (2,2), strides=2,
+                               padding='same', activation='softmax')(enet_dec) 
 
     return enet_dec
 
