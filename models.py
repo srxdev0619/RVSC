@@ -284,10 +284,10 @@ def discriminator(inputs,
 
     with tf.name_scope('discriminator'):
         conv1 = LeakyReLU()(Conv2D(64, (4,4), strides=2, trainable=trainable)(inputs))
-        #conv1 = BatchNormalization()(conv1)
+        conv1 = BatchNormalization()(conv1)
 
         conv2 = LeakyReLU()(Conv2D(128, (4,4), strides=2, trainable=trainable)(conv1))
-        #conv2 = BatchNormalization()(conv2)
+        conv2 = BatchNormalization()(conv2)
 
         conv3 = LeakyReLU()(Conv2D(512, (4,4), strides=2, trainable=trainable)(conv2))
 
