@@ -74,12 +74,14 @@ def unet(inputs,
 
 
 def initial_block(inputs,
-                 num_filters=13,
+                 num_filters=None,
                  filter_rows=3,
                  filter_cols=3,
                  strides=(2,2),
                  trainable=True):
-    
+    if num_filters is None:
+        num_filters = 16 - inputs.get_shape().as_list()[-1]
+        
     conv = Conv2D(num_filters, (filter_rows, filter_cols),
                   padding='same', strides=strides, trainable=trainable)(inputs)
     
@@ -276,6 +278,207 @@ def enet(inputs,
     
     
     
+
+
+
+def bottleneck_enc_skip(inputs,
+                        out_channels,
+                        internal_scale=4,
+                        asymmetric=0,
+                        dilated=0,
+                        downsample=False,
+                        dropout_rate=0.1,
+                        trainable=True):
+    with tf.name_scope('enc_bottleneck'):
+
+        mid_channels = int(out_channels/internal_scale)
+
+        encoder = inputs
+
+        input_stride = 2 if downsample else 1
+        
+        encoder = Conv2D(mid_channels, (input_stride, input_stride),
+                         padding='same', strides=input_stride,
+                         use_bias=False, trainable=trainable)(encoder) 
+
+        encoder = BatchNormalization(momentum=0.1, trainable=trainable)(encoder)
+        encoder = PReLU(shared_axes=[1,2], trainable=trainable)(encoder)
+
+        if not asymmetric and not dilated:
+            encoder = Conv2D(mid_channels, (3,3), padding='same', trainable=trainable)(encoder)
+        elif asymmetric:
+        
+            encoder = Conv2D(mid_channels, (1, asymmetric),
+                             padding='same', use_bias='False', trainable=trainable)(encoder)
+            encoder = Conv2D(mid_channels, (asymmetric, 1),
+                             padding='same', trainable=trainable)(encoder)
+        elif dilated:
+
+            encoder = Conv2D(mid_channels, (3,3), dilation_rate=dilated,
+                             padding='same', trainable=trainable)(encoder)
+        else:
+            raise(Exception('Invalid Value for asymmetric or dilation'))
+        
+        encoder = BatchNormalization(momentum=0.1, trainable=trainable)(encoder)
+        encoder = PReLU(shared_axes=[1,2], trainable=trainable)(encoder)
+
+        encoder = Conv2D(out_channels, (1,1), padding='same',
+                         use_bias=False, trainable=trainable)(encoder)
+
+        encoder = BatchNormalization(momentum=0.1, trainable=trainable)(encoder)
+        encoder = SpatialDropout2D(dropout_rate)(encoder)
+
+        down_branch = inputs
+
+        if downsample:
+            down_branch = MaxPooling2D()(down_branch)
+            down_branch = Permute((1,3,2))(down_branch)
+            pad_feature_maps = out_channels - inputs.get_shape().as_list()[3]
+            tb_pad = (0,0)
+            lr_pad = (0, pad_feature_maps)
+            down_branch = ZeroPadding2D(padding=(tb_pad, lr_pad))(down_branch)
+            down_branch = Permute((1,3,2))(down_branch)
+
+        encoder = add([encoder, down_branch])
+        encoder = PReLU(shared_axes=[1,2])(encoder)
+
+    return encoder
+
+
+def bottleneck_dec_skip(inputs,
+                        out_channels,
+                        internal_scale=4,
+                        upsample=False,
+                        trainable=True,
+                        reverse_module=False):
+
+    with tf.name_scope('dec_bottleneck'):
+        mid_channels = int(out_channels/internal_scale)
+
+        input_stride = 2 if upsample else 1
+
+        decoder = Conv2D(mid_channels, (1,1), padding='same',
+                         use_bias=False, trainable=trainable)(inputs)
+        decoder = BatchNormalization(momentum=0.1, trainable=trainable)(decoder)
+        decoder = Activation('relu')(decoder)
+        
+        if upsample:
+            decoder = Conv2DTranspose(mid_channels, (3,3), strides=2,
+                                      trainable=trainable, padding='same')(decoder)
+        else:
+            decoder = Conv2D(mid_channels, (3,3), padding='same', trainable=trainable)(decoder)
+
+        decoder = BatchNormalization(momentum=0.1, trainable=trainable)(decoder)
+        decoder = Activation('relu')(decoder)
+
+        decoder = Conv2D(out_channels, (1,1), padding='same',
+                         use_bias=False, trainable=trainable)(decoder)
+
+        up_branch = inputs
+
+        if decoder.get_shape()[-1] != out_channels or upsample:
+            up_branch = Conv2D(out_channels, (1,1), padding='same',
+                               use_bias=False, trainable=trainable)(up_branch)
+            up_branch = BatchNormalization(momentum=0.1, trainable=trainable)(up_branch)
+
+            if upsample and reverse_module:
+                up_branch = UpSampling2D((2,2))(up_branch)
+                
+        if not upsample or reverse_module:
+            up_branch = BatchNormalization(momentum=0.1, trainable=trainable)(up_branch)
+        else:
+            return up_branch
+
+        decoder = add([decoder, up_branch])
+        decoder = Activation('relu')(decoder)
+
+        return decoder
+            
+
+        
+def enet_encoder_skip(inputs,
+                      dropout_rate=0.01,
+                      trainable=True):
+
+    enet_enc = initial_block(inputs, trainable=trainable)
+    enet_enc_256 = enet_enc
+    enet_enc = bottleneck_enc_skip(enet_enc,
+                                   out_channels=64,
+                                   downsample=True,
+                                   dropout_rate=dropout_rate,
+                                   trainable=trainable)
+    enet_enc_128 = enet_enc
+
+    for _ in range(4):
+        enet_enc = bottleneck_enc_skip(enet_enc,
+                                       out_channels=64,
+                                       dropout_rate=dropout_rate,
+                                       trainable=trainable)
+
+    enet_enc = bottleneck_enc_skip(enet_enc,
+                                   out_channels=128,
+                                   downsample=True)
+
+    for _ in range(2):
+        enet_enc = bottleneck_enc_skip(enet_enc, 128, trainable=trainable)
+        enet_enc = bottleneck_enc_skip(enet_enc, 128, dilated=2, trainable=trainable)
+        enet_enc_di2 = enet_enc
+        enet_enc = bottleneck_enc_skip(enet_enc, 128, asymmetric=5, trainable=trainable)
+        enet_enc_concat = add([enet_enc, enet_enc_di2])
+        enet_enc = bottleneck_enc_skip(enet_enc_concat, 128, dilated=4, trainable=trainable)
+        enet_enc_di4 = enet_enc
+        enet_enc = bottleneck_enc_skip(enet_enc, 128, trainable=trainable)
+        enet_enc_concat = add([enet_enc, enet_enc_di4])
+        enet_enc = bottleneck_enc_skip(enet_enc_concat, 128, dilated=8, trainable=trainable)
+        enet_enc_di8 = enet_enc
+        enet_enc = bottleneck_enc_skip(enet_enc, 128, asymmetric=5, trainable=trainable)
+        enet_enc_concat = add([enet_enc, enet_enc_di8])
+        enet_enc = bottleneck_enc_skip(enet_enc_concat, 128, dilated=16, trainable=trainable)
+    return enet_enc, enet_enc_128, enet_enc_256
+
+
+
+def enet_decoder_skip(inputs,
+                      out_channels,
+                      enet_enc_128,
+                      enet_enc_256,
+                      activation='softmax',
+                      trainable=True):
+
+    enet_dec = bottleneck_dec_skip(inputs, 64, upsample=True,
+                                   reverse_module = True, trainable=trainable)
+    enet_dec = add([enet_dec, enet_enc_128])
+
+    enet_dec = bottleneck_dec_skip(enet_dec, 64, trainable=trainable)
+    enet_dec = bottleneck_dec_skip(enet_dec, 64, trainable=trainable)
+
+    enet_dec = bottleneck_dec_skip(enet_dec, 16, upsample=True,
+                                   reverse_module=True, trainable=True)
+    enet_dec = add([enet_dec, enet_enc_256])
+
+    enet_dec = bottleneck_dec_skip(enet_dec, 16)
+
+    enet_dec = Conv2DTranspose(out_channels, (2,2), strides=2, 
+                               padding='same', activation=activation)(enet_dec) 
+
+    return enet_dec
+
+
+def enet_skip(inputs,
+              out_channels,
+              activation='softmax',
+              trainable=True):
+    
+    with tf.name_scope('ENet'):
+        enet_out, enet_enc_128, enet_enc_256 = enet_encoder_skip(inputs, trainable=trainable)
+        enet_out = enet_decoder_skip(enet_out, out_channels,
+                                     enet_enc_128=enet_enc_128,
+                                     enet_enc_256=enet_enc_256,
+                                     activation=activation, trainable=trainable)
+        return enet_out
+
+
+
 
 
 
