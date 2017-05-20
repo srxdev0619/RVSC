@@ -499,3 +499,20 @@ def discriminator(inputs,
         output = Dense(1, activation=None)(flat_vec)
 
         return output
+
+
+def discriminator_noBN(inputs,
+                       trainable=True):
+
+    with tf.name_scope('discriminator'):
+        conv1 = LeakyReLU()(Conv2D(64, (4,4), strides=2, trainable=trainable)(inputs))
+
+        conv2 = LeakyReLU()(Conv2D(128, (4,4), strides=2, trainable=trainable)(conv1))
+
+        conv3 = LeakyReLU()(Conv2D(512, (4,4), strides=2, trainable=trainable)(conv2))
+
+        flat_vec = Flatten()(conv3)
+
+        output = Dense(1, activation=None)(flat_vec)
+
+        return output
