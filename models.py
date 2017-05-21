@@ -398,7 +398,8 @@ def bottleneck_dec_skip(inputs,
         
 def enet_encoder_skip(inputs,
                       dropout_rate=0.01,
-                      trainable=True):
+                      trainable=True,
+                      num_rep=2):
 
     enet_enc = initial_block(inputs, trainable=trainable)
     enet_enc_256 = enet_enc
@@ -419,7 +420,7 @@ def enet_encoder_skip(inputs,
                                    out_channels=128,
                                    downsample=True)
 
-    for _ in range(2):
+    for _ in range(num_rep):
         enet_enc = bottleneck_enc_skip(enet_enc, 128, trainable=trainable)
         enet_enc = bottleneck_enc_skip(enet_enc, 128, dilated=2, trainable=trainable)
         enet_enc_di2 = enet_enc
@@ -478,6 +479,20 @@ def enet_skip(inputs,
         return enet_out
 
 
+def enet_skip_small(inputs,
+                    out_channels,
+                    activation='softmax',
+                    trainable=True):
+    
+    with tf.name_scope('ENet'):
+        enet_out, enet_enc_128, enet_enc_256 = enet_encoder_skip(inputs,
+                                                                 trainable=trainable,
+                                                                 num_rep=1)
+        enet_out = enet_decoder_skip(enet_out, out_channels,
+                                     enet_enc_128=enet_enc_128,
+                                     enet_enc_256=enet_enc_256,
+                                     activation=activation, trainable=trainable)
+        return enet_out
 
 
 
