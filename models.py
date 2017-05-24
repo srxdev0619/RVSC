@@ -267,11 +267,14 @@ def enet_decoder(inputs,
 
 def enet(inputs,
          out_channels,
+         dropout_rate=0.5,
          activation='softmax',
          trainable=True):
     
     with tf.name_scope('ENet'):
-        enet_out = enet_encoder(inputs, trainable=trainable)
+        enet_out = enet_encoder(inputs, 
+                                dropout_rate=dropout_rate,
+                                trainable=trainable)
         enet_out = enet_decoder(enet_out, out_channels,
                                 activation=activation, trainable=trainable)
         return enet_out
@@ -399,7 +402,8 @@ def bottleneck_dec_skip(inputs,
 def enet_encoder_skip(inputs,
                       dropout_rate=0.01,
                       trainable=True,
-                      num_rep=2):
+                      num_rep1=4,
+                      num_rep2=2):
 
     enet_enc = initial_block(inputs, trainable=trainable)
     enet_enc_256 = enet_enc
@@ -410,7 +414,7 @@ def enet_encoder_skip(inputs,
                                    trainable=trainable)
     enet_enc_128 = enet_enc
 
-    for _ in range(4):
+    for _ in range(num_rep1):
         enet_enc = bottleneck_enc_skip(enet_enc,
                                        out_channels=64,
                                        dropout_rate=dropout_rate,
@@ -420,7 +424,7 @@ def enet_encoder_skip(inputs,
                                    out_channels=128,
                                    downsample=True)
 
-    for _ in range(num_rep):
+    for _ in range(num_rep2):
         enet_enc = bottleneck_enc_skip(enet_enc, 128, trainable=trainable)
         enet_enc = bottleneck_enc_skip(enet_enc, 128, dilated=2, trainable=trainable)
         enet_enc_di2 = enet_enc
@@ -436,6 +440,8 @@ def enet_encoder_skip(inputs,
         enet_enc_concat = add([enet_enc, enet_enc_di8])
         enet_enc = bottleneck_enc_skip(enet_enc_concat, 128, dilated=16, trainable=trainable)
     return enet_enc, enet_enc_128, enet_enc_256
+
+
 
 
 
@@ -467,11 +473,14 @@ def enet_decoder_skip(inputs,
 
 def enet_skip(inputs,
               out_channels,
+              dropout_rate=0.5,
               activation='softmax',
               trainable=True):
     
     with tf.name_scope('ENet'):
-        enet_out, enet_enc_128, enet_enc_256 = enet_encoder_skip(inputs, trainable=trainable)
+        enet_out, enet_enc_128, enet_enc_256 = enet_encoder_skip(inputs, 
+                                                                 dropout_rate=dropout_rate,
+                                                                 trainable=trainable)
         enet_out = enet_decoder_skip(enet_out, out_channels,
                                      enet_enc_128=enet_enc_128,
                                      enet_enc_256=enet_enc_256,
@@ -481,19 +490,97 @@ def enet_skip(inputs,
 
 def enet_skip_small(inputs,
                     out_channels,
+                    num_rep1=1,
+                    num_rep2=1,
+                    dropout_rate=0.5,
                     activation='softmax',
                     trainable=True):
     
     with tf.name_scope('ENet'):
         enet_out, enet_enc_128, enet_enc_256 = enet_encoder_skip(inputs,
+                                                                 dropout_rate=dropout_rate,
                                                                  trainable=trainable,
-                                                                 num_rep=1)
+                                                                 num_rep1=num_rep1,
+                                                                 num_rep2=num_rep2)
         enet_out = enet_decoder_skip(enet_out, out_channels,
                                      enet_enc_128=enet_enc_128,
                                      enet_enc_256=enet_enc_256,
                                      activation=activation, trainable=trainable)
         return enet_out
 
+
+def enet_encoder_skip_small(inputs,
+                            dropout_rate=0.01,
+                            trainable=True,
+                            num_rep1=4,
+                            num_rep2=2):
+
+    enet_enc = initial_block(inputs, trainable=trainable)
+    enet_enc_256 = enet_enc
+    enet_enc = bottleneck_enc_skip(enet_enc,
+                                   out_channels=64,
+                                   downsample=True,
+                                   dropout_rate=dropout_rate,
+                                   trainable=trainable)
+    enet_enc_128 = enet_enc
+
+    for _ in range(num_rep1):
+        enet_enc = bottleneck_enc_skip(enet_enc,
+                                       out_channels=64,
+                                       dropout_rate=dropout_rate,
+                                       trainable=trainable)
+
+    enet_enc = bottleneck_enc_skip(enet_enc,
+                                   out_channels=128,
+                                   downsample=True)
+
+    for _ in range(num_rep2):
+        enet_enc = bottleneck_enc_skip(enet_enc, 128, trainable=trainable)
+        enet_enc = bottleneck_enc_skip(enet_enc, 128, dilated=2, trainable=trainable)
+        enet_enc = bottleneck_enc_skip(enet_enc, 128, dilated=4, trainable=trainable)
+        enet_enc = bottleneck_enc_skip(enet_enc, 128, dilated=8, trainable=trainable)
+        enet_enc = bottleneck_enc_skip(enet_enc, 128, dilated=16, trainable=trainable)
+    return enet_enc, enet_enc_128, enet_enc_256
+
+
+def enet_skip_vsmall(inputs,
+                     out_channels,
+                     num_rep1=1,
+                     num_rep2=1,
+                     dropout_rate=0.5,
+                     activation='softmax',
+                     trainable=True):
+    
+    with tf.name_scope('ENet'):
+        enet_out, enet_enc_128, enet_enc_256 = enet_encoder_skip_small(inputs,
+                                                                       dropout_rate=dropout_rate,
+                                                                       trainable=trainable,
+                                                                       num_rep1=num_rep1,
+                                                                       num_rep2=num_rep2)
+        enet_out = enet_decoder_skip(enet_out, out_channels,
+                                     enet_enc_128=enet_enc_128,
+                                     enet_enc_256=enet_enc_256,
+                                     activation=activation, trainable=trainable)
+        return enet_out
+
+
+def enet_vsmall(inputs,
+                     out_channels,
+                     num_rep1=1,
+                     num_rep2=1,
+                     dropout_rate=0.5,
+                     activation='softmax',
+                     trainable=True):
+    
+    with tf.name_scope('ENet'):
+        enet_out, _, _ = enet_encoder_skip_small(inputs,
+                                                 dropout_rate=dropout_rate,
+                                                 trainable=trainable,
+                                                 num_rep1=num_rep1,
+                                                 num_rep2=num_rep2)
+        enet_out = enet_decoder(enet_out, out_channels,
+                                activation=activation, trainable=trainable)
+        return enet_out
 
 
 
