@@ -565,12 +565,12 @@ def enet_skip_vsmall(inputs,
 
 
 def enet_vsmall(inputs,
-                     out_channels,
-                     num_rep1=1,
-                     num_rep2=1,
-                     dropout_rate=0.5,
-                     activation='softmax',
-                     trainable=True):
+                out_channels,
+                num_rep1=1,
+                num_rep2=1,
+                dropout_rate=0.5,
+                activation='softmax',
+                trainable=True):
     
     with tf.name_scope('ENet'):
         enet_out, _, _ = enet_encoder_skip_small(inputs,
@@ -582,6 +582,24 @@ def enet_vsmall(inputs,
                                 activation=activation, trainable=trainable)
         return enet_out
 
+
+def TIENet(inputs,
+           out_channels,
+           dropout_rate=0.5,
+           activation='sigmoid',
+           trainable=True):
+
+    with tf.name_scope("TIENet"):
+        net_out = Conv2D(64, (3,3), strides=1,
+                         dilation_rate=8, trainable=trainable)(inputs)
+        net_out = Conv2D(128, (3,3), strides=1,
+                         dilation_rate=16, trainable=trainable)(net_out)
+        net_out = Conv2D(256, (3,3), strides=1,
+                         dilation_rate=32, trainable=trainable)(net_out)
+        net_out = Conv2D(512, (3,3), strides=1,
+                        dilation_rate=64, trainable=trainable)(net_out)
+        #TODO
+        
 
 
 def discriminator(inputs,
@@ -607,13 +625,15 @@ def discriminator_noBN(inputs,
                        trainable=True):
 
     with tf.name_scope('discriminator'):
-        conv1 = LeakyReLU()(Conv2D(64, (4,4), strides=2, trainable=trainable)(inputs))
+        conv1 = LeakyReLU()(Conv2D(64, (2,2), strides=2, trainable=trainable)(inputs))
 
-        conv2 = LeakyReLU()(Conv2D(128, (4,4), strides=2, trainable=trainable)(conv1))
+        conv2 = LeakyReLU()(Conv2D(128, (2,2), strides=2, trainable=trainable)(conv1))
 
-        conv3 = LeakyReLU()(Conv2D(512, (4,4), strides=2, trainable=trainable)(conv2))
+        conv3 = LeakyReLU()(Conv2D(512, (2,2), strides=2, trainable=trainable)(conv2))
 
-        flat_vec = Flatten()(conv3)
+        conv4 = LeakyReLU()(Conv2D(1024, (2,2), strides=2, trainable=trainable)(conv3))
+
+        flat_vec = Flatten()(conv4)
 
         output = Dense(1, activation=None)(flat_vec)
 
